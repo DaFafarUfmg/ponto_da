@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ponto do DA</title>
+<style>
+  :root { --verde:#1e8e3e; --vermelho:#c5221f; --cinza:#5f6368; --borda:#dadce0; --fundo:#f6f7f9; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--fundo); color:#202124; }
+  header { background:#fff; border-bottom:1px solid var(--borda); padding:16px; text-align:center; font-weight:700; font-size:1.1rem; }
+  main { max-width:720px; margin:0 auto; padding:20px 16px 40px; }
+  h2 { margin:8px 0 16px; text-align:center; font-size:1.5rem; }
+  input[type=search], input[type=password], input[type=tel] { width:100%; padding:14px; font-size:1.1rem; border:1px solid var(--borda); border-radius:10px; margin-bottom:14px; background:#fff; }
+  #lista { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; }
+  .nome { padding:16px 12px; background:#fff; border:1px solid var(--borda); border-radius:12px; font-size:1.05rem; text-align:left; cursor:pointer; }
+  .nome:active { background:#e8f0fe; }
+  .grande { display:block; width:100%; padding:26px 12px; margin:12px 0; font-size:1.5rem; font-weight:700; color:#fff; border:0; border-radius:16px; cursor:pointer; }
+  .grande:disabled { opacity:.5; }
+  #btn_entrada { background:var(--verde); }
+  #btn_saida { background:var(--vermelho); }
+  .link { display:block; margin:18px auto 0; background:none; border:0; color:var(--cinza); font-size:1rem; text-decoration:underline; cursor:pointer; }
+  .centro { text-align:center; }
+  #ok_icone { font-size:5rem; }
+  #erro { margin-top:16px; padding:12px; border-radius:10px; background:#fce8e6; color:var(--vermelho); text-align:center; }
+  #aviso { text-align:center; color:var(--cinza); }
+</style>
+</head>
+<body>
+<header>Ponto do Diretório Acadêmico</header>
+<main>
+
+  <section id="tela_nomes">
+    <h2>Quem é você?</h2>
+    <input type="search" id="busca" placeholder="Buscar nome" autocomplete="off">
+    <div id="lista"></div>
+    <p id="aviso">Carregando lista de membros...</p>
+  </section>
+
+  <section id="tela_acao" hidden>
+    <h2 id="ola"></h2>
+    <input type="tel" id="codigo" inputmode="numeric" maxlength="4" placeholder="Seu código de 4 dígitos" hidden>
+    <button class="grande" id="btn_entrada">Registrar entrada</button>
+    <button class="grande" id="btn_saida">Registrar saída</button>
+    <button class="link" id="btn_voltar">Não sou eu</button>
+  </section>
+
+  <section id="tela_ok" class="centro" hidden>
+    <div id="ok_icone">✅</div>
+    <h2 id="ok_texto"></h2>
+    <p id="ok_sub"></p>
+  </section>
+
+  <div id="erro" hidden></div>
+</main>
+
+<script>
+  // Cole aqui a URL do aplicativo da Web gerada pelo Apps Script (termina em /exec)
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxKLK-r19FXqw0RC0A1DB0qCk0eXyBXRGA9StEyQ1ieFyAK1aOSzxbsdBmeYj4qg4oBpw/exec';
+
+  const $ = function (id) { return document.getElementById(id); };
+  let membros = [];
+  let selecionado = null;
+  let timer = null;
+
+  function mostrar(tela) {
+    ['tela_nomes', 'tela_acao', 'tela_ok'].forEach(function (t) { $(t).hidden = (t !== tela); });
+  }
+
+  function erro(msg) {
+    $('erro').textContent = msg;
+    $('erro').hidden = !msg;
+  }
+
+  async function chamar(params) {
+    const resp = await fetch(API_URL + '?' + new URLSearchParams(params));
+    return resp.json();
+  }
+
+  function desenharLista() {
+    const filtro = $('busca').value.trim().toLowerCase();
+    const lista = $('lista');
+    lista.innerHTML = '';
+    membros
+      .filter(function (m) { return m.nome.toLowerCase().indexOf(filtro) !== -1; })
+      .forEach(function (m) {
+        const b = document.createElement('button');
+        b.className = 'nome';
+        b.textContent = m.nome;
+        b.addEventListener('click', function () { escolher(m); });
+        lista.appendChild(b);
+      });
+  }
+
+  function escolher(m) {
+    selecionado = m;
+    erro('');
+    $('ola').textContent = 'Olá, ' + m.nome.split(' ')[0] + '!';
+    $('codigo').value = '';
+    $('codigo').hidden = !m.temCodigo;
+    mostrar('tela_acao');
+  }
+
+  function voltar() {
+    clearTimeout(timer);
+    selecionado = null;
+    $('busca').value = '';
+    desenharLista();
+    erro('');
+    mostrar('tela_nomes');
+  }
+
+  async function registrar(tipo) {
+    erro('');
+    if (selecionado.temCodigo && $('codigo').value.trim().length !== 4) {
+      erro('Digite o seu código de 4 dígitos.');
+      return;
+    }
+    $('btn_entrada').disabled = true;
+    $('btn_saida').disabled = true;
+    try {
+      const r = await chamar({
+        acao: 'registrar',
+        nome: selecionado.nome,
+        tipo: tipo,
+        codigo: $('codigo').value.trim()
+      });
+      if (!r.ok) throw new Error(r.erro);
+      $('ok_texto').textContent = (tipo === 'entrada' ? 'Entrada' : 'Saída') + ' registrada às ' + r.hora;
+      $('ok_sub').textContent = selecionado.nome;
+      mostrar('tela_ok');
+      timer = setTimeout(voltar, 5000);
+    } catch (e) {
+      erro(e.message ? e.message : 'Não foi possível registrar. Tente de novo.');
+    } finally {
+      $('btn_entrada').disabled = false;
+      $('btn_saida').disabled = false;
+    }
+  }
+
+  async function iniciar() {
+    if (API_URL.indexOf('COLE_AQUI') !== -1) {
+      $('aviso').textContent = 'Falta configurar a URL do Apps Script no arquivo index.html.';
+      return;
+    }
+    try {
+      const r = await chamar({ acao: 'listar' });
+      if (!r.ok) throw new Error(r.erro);
+      membros = r.membros;
+      $('aviso').hidden = true;
+      desenharLista();
+    } catch (e) {
+      $('aviso').textContent = 'Não consegui carregar a lista. Atualize a página.';
+    }
+  }
+
+  $('busca').addEventListener('input', desenharLista);
+  $('btn_entrada').addEventListener('click', function () { registrar('entrada'); });
+  $('btn_saida').addEventListener('click', function () { registrar('saida'); });
+  $('btn_voltar').addEventListener('click', voltar);
+  iniciar();
+</script>
+</body>
+</html>
