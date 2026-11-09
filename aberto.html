@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tem gente no DA?</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:#f6f7f9; color:#202124; transition:background .4s; }
+  body.sim { background:#e6f4ea; }
+  body.nao { background:#fce8e6; }
+  h1 { margin:0 0 12px; font-size:clamp(1.8rem, 6vw, 3rem); }
+  #resposta { font-size:clamp(6rem, 28vw, 14rem); font-weight:800; line-height:1; margin:10px 0; color:#5f6368; }
+  body.sim #resposta { color:#1e8e3e; }
+  body.nao #resposta { color:#c5221f; }
+  #detalhe { font-size:clamp(1.3rem, 4.5vw, 2rem); min-height:2.4rem; }
+  #rodape { margin-top:36px; font-size:.95rem; color:#80868b; }
+</style>
+</head>
+<body>
+  <h1>Tem gente no DA?</h1>
+  <div id="resposta">...</div>
+  <div id="detalhe"></div>
+  <div id="rodape">Carregando...</div>
+
+<script>
+  // Cole aqui a mesma URL do Apps Script usada no index.html (termina em /exec)
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxKLK-r19FXqw0RC0A1DB0qCk0eXyBXRGA9StEyQ1ieFyAK1aOSzxbsdBmeYj4qg4oBpw/exec';
+  const INTERVALO_SEGUNDOS = 30;
+
+  const $ = function (id) { return document.getElementById(id); };
+
+  async function atualizar() {
+    if (API_URL.indexOf('COLE_AQUI') !== -1) {
+      $('rodape').textContent = 'Falta configurar a URL do Apps Script no arquivo aberto.html.';
+      return;
+    }
+    try {
+      const resp = await fetch(API_URL + '?' + new URLSearchParams({ acao: 'status' }));
+      const r = await resp.json();
+      if (!r.ok) throw new Error(r.erro);
+
+      const n = r.quantidade;
+      document.body.className = n > 0 ? 'sim' : 'nao';
+      $('resposta').textContent = n > 0 ? 'SIM' : 'NÃO';
+      $('detalhe').textContent = n > 0
+        ? n + (n === 1 ? ' pessoa na sala' : ' pessoas na sala')
+        : 'Ninguém na sala no momento';
+      $('rodape').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      $('rodape').textContent = 'Sem conexão com o sistema. Tentando de novo...';
+    }
+  }
+
+  atualizar();
+  setInterval(atualizar, INTERVALO_SEGUNDOS * 1000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) atualizar(); });
+</script>
+</body>
+</html>
