@@ -12,7 +12,7 @@
   header { background:#fff; border-bottom:1px solid var(--borda); padding:16px; text-align:center; font-weight:700; font-size:1.1rem; }
   main { max-width:720px; margin:0 auto; padding:20px 16px 40px; }
   h2 { margin:8px 0 16px; text-align:center; font-size:1.5rem; }
-  input[type=search], input[type=password], input[type=tel] { width:100%; padding:14px; font-size:1.1rem; border:1px solid var(--borda); border-radius:10px; margin-bottom:14px; background:#fff; }
+  input[type=search], input[type=password], input[type=tel], input[type=date], input[type=time] { width:100%; padding:14px; font-size:1.1rem; border:1px solid var(--borda); border-radius:10px; margin-bottom:14px; background:#fff; }
   #lista { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; }
   .nome { padding:16px 12px; background:#fff; border:1px solid var(--borda); border-radius:12px; font-size:1.05rem; text-align:left; cursor:pointer; }
   .nome:active { background:#e8f0fe; }
@@ -23,6 +23,10 @@
   .link { display:block; margin:18px auto 0; background:none; border:0; color:var(--cinza); font-size:1rem; text-decoration:underline; cursor:pointer; }
   .centro { text-align:center; }
   #ok_icone { font-size:5rem; }
+  label { display:block; margin:6px 0; font-weight:600; }
+  #btn_confirmar_saida { background:var(--verde); }
+  #ok_aviso { margin:18px auto 0; max-width:520px; padding:14px; border-radius:12px; background:#fef7e0; color:#7a5a00; font-size:1.1rem; text-align:left; }
+  #btn_entendi { background:#1a73e8; max-width:520px; margin:18px auto 0; }
   #erro { margin-top:16px; padding:12px; border-radius:10px; background:#fce8e6; color:var(--vermelho); text-align:center; }
   #aviso { text-align:center; color:var(--cinza); }
 </style>
@@ -46,10 +50,24 @@
     <button class="link" id="btn_voltar">Não sou eu</button>
   </section>
 
+  <section id="tela_saida" hidden>
+    <h2>Falta uma saída no seu ponto</h2>
+    <p id="saida_texto" class="centro"></p>
+    <label for="saida_data">Dia em que você saiu</label>
+    <input type="date" id="saida_data">
+    <label for="saida_hora">Horário da saída</label>
+    <input type="time" id="saida_hora">
+    <button class="grande" id="btn_confirmar_saida">Confirmar saída e registrar entrada</button>
+    <button class="link" id="btn_nao_lembro">Não lembro o horário</button>
+    <button class="link" id="btn_cancelar_saida">Cancelar</button>
+  </section>
+
   <section id="tela_ok" class="centro" hidden>
     <div id="ok_icone">✅</div>
     <h2 id="ok_texto"></h2>
     <p id="ok_sub"></p>
+    <div id="ok_aviso" hidden></div>
+    <button class="grande" id="btn_entendi" hidden>Entendi</button>
   </section>
 
   <div id="erro" hidden></div>
@@ -65,7 +83,7 @@
   let timer = null;
 
   function mostrar(tela) {
-    ['tela_nomes', 'tela_acao', 'tela_ok'].forEach(function (t) { $(t).hidden = (t !== tela); });
+    ['tela_nomes', 'tela_acao', 'tela_saida', 'tela_ok'].forEach(function (t) { $(t).hidden = (t !== tela); });
   }
 
   function erro(msg) {
@@ -111,31 +129,63 @@
     mostrar('tela_nomes');
   }
 
-  async function registrar(tipo) {
+  function travar(valor) {
+    ['btn_entrada', 'btn_saida', 'btn_confirmar_saida', 'btn_nao_lembro'].forEach(function (id) {
+      $(id).disabled = valor;
+    });
+  }
+
+  function prepararSaida(r) {
+    $('saida_texto').textContent = 'Sua última entrada em aberto foi em ' + r.entradaAberta +
+      '. Informe o dia e a hora em que você saiu.';
+    $('saida_data').value = r.dataSugerida;
+    $('saida_hora').value = '';
+    mostrar('tela_saida');
+  }
+
+  function confirmarSaida() {
+    const d = $('saida_data').value;
+    const h = $('saida_hora').value;
+    if (!d || !h) {
+      erro('Informe o dia e o horário em que você saiu.');
+      return;
+    }
+    registrar('entrada', { saidaInformada: d + 'T' + h });
+  }
+
+  async function registrar(tipo, extras) {
     erro('');
     if (selecionado.temCodigo && $('codigo').value.trim().length !== 4) {
       erro('Digite o seu código de 4 dígitos.');
       return;
     }
-    $('btn_entrada').disabled = true;
-    $('btn_saida').disabled = true;
+    travar(true);
     try {
-      const r = await chamar({
+      const params = {
         acao: 'registrar',
         nome: selecionado.nome,
         tipo: tipo,
         codigo: $('codigo').value.trim()
-      });
+      };
+      if (extras) Object.assign(params, extras);
+      const r = await chamar(params);
       if (!r.ok) throw new Error(r.erro);
+      if (r.precisaSaida) {
+        prepararSaida(r);
+        return;
+      }
       $('ok_texto').textContent = (tipo === 'entrada' ? 'Entrada' : 'Saída') + ' registrada às ' + r.hora;
       $('ok_sub').textContent = selecionado.nome;
+      $('ok_icone').textContent = r.aviso ? '⚠️' : '✅';
+      $('ok_aviso').textContent = r.aviso ? r.aviso : '';
+      $('ok_aviso').hidden = !r.aviso;
+      $('btn_entendi').hidden = !r.aviso;
       mostrar('tela_ok');
-      timer = setTimeout(voltar, 5000);
+      timer = setTimeout(voltar, r.aviso ? 45000 : 5000);
     } catch (e) {
       erro(e.message ? e.message : 'Não foi possível registrar. Tente de novo.');
     } finally {
-      $('btn_entrada').disabled = false;
-      $('btn_saida').disabled = false;
+      travar(false);
     }
   }
 
@@ -159,6 +209,10 @@
   $('btn_entrada').addEventListener('click', function () { registrar('entrada'); });
   $('btn_saida').addEventListener('click', function () { registrar('saida'); });
   $('btn_voltar').addEventListener('click', voltar);
+  $('btn_entendi').addEventListener('click', voltar);
+  $('btn_confirmar_saida').addEventListener('click', confirmarSaida);
+  $('btn_nao_lembro').addEventListener('click', function () { registrar('entrada', { naoLembro: '1' }); });
+  $('btn_cancelar_saida').addEventListener('click', voltar);
   iniciar();
 </script>
 </body>
